@@ -4,7 +4,7 @@ package Class::Cloneable;
 use strict;
 use warnings;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 sub clone {
     my ($self) = @_;
@@ -17,8 +17,9 @@ use strict;
 use warnings;
 
 use overload ();
+use Scalar::Util qw(blessed);
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 sub clone {
     (UNIVERSAL::isa((caller)[0], 'Class::Cloneable') || 
@@ -39,7 +40,7 @@ sub clone {
         # now we check to see what we have,
         # and deconstruct and deep copy the 
         # Class::Cloneable objects
-        if (UNIVERSAL::isa($to_clone, 'Class::Cloneable')) {
+        if (blessed($to_clone) && $to_clone->isa('Class::Cloneable')) {
             # now deconstruct the object,
             my ($class, $ref_type) = deconstructObject($to_clone);
             # and copy the object's internals and
@@ -72,7 +73,7 @@ sub deconstructObject {
      UNIVERSAL::isa((caller)[0], 'Class::Cloneable::Util')) 
         || die "Illegal Operation : This method can only be called by a subclass of Class::Cloneable"; 
     my ($obj_to_deconstruct) = @_;
-    (defined($obj_to_deconstruct) && ref($obj_to_deconstruct) && UNIVERSAL::isa($obj_to_deconstruct, 'UNIVERSAL')) 
+    (blessed($obj_to_deconstruct)) 
         || die "Insufficient Arguments : Must specify a valid object to deconstruct";
     # get the properly stringified object
     # with respect for overload  
@@ -99,8 +100,7 @@ sub cloneObject {
     my $clone;
     # check to see if we have an Class::Cloneable object,
     # or check to see if its an object, with a clone method    
-    if (UNIVERSAL::isa($to_clone, 'Class::Cloneable') ||
-        UNIVERSAL::isa($to_clone, 'UNIVERSAL') && $to_clone->can('clone')) {
+    if (blessed($to_clone) && ($to_clone->isa('Class::Cloneable') || $to_clone->can('clone'))) {
         # note, we want to be sure to respect any overriding of
         # the clone method with Class::Cloneable objects here
         # otherwise it would be faster to just send it directly
@@ -111,7 +111,7 @@ sub cloneObject {
     # we will respect its encapsulation, and not muck with 
     # its internals. Basically, we assume it does not want
     # to be cloned
-    elsif (UNIVERSAL::isa($to_clone, 'UNIVERSAL')) {
+    elsif (blessed($to_clone)) {
         $clone = $to_clone;
     }
     # if all else fails, it is likely a basic ref
