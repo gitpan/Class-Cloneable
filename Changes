@@ -1,0 +1,7 @@
+Revision history for Perl extension Class-Cloneable.
+
+0.01 Mon Oct  6 2004
+    - module created and released on CPAN
+      - based upon Clone::PP, but with many 
+        fundamental philosophical changes
+
