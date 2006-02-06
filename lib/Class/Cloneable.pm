@@ -4,7 +4,7 @@ package Class::Cloneable;
 use strict;
 use warnings;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 sub clone {
     my ($self) = @_;
@@ -17,126 +17,89 @@ use strict;
 use warnings;
 
 use overload ();
-use Scalar::Util qw(blessed);
+use Carp qw(confess);
+use Scalar::Util qw(blessed reftype weaken isweak);
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 sub clone {
     (UNIVERSAL::isa((caller)[0], 'Class::Cloneable') || 
      UNIVERSAL::isa((caller)[0], 'Class::Cloneable::Util')) 
-        || die "Illegal Operation : This method can only be called by a subclass of Class::Cloneable";        
+        || confess "Illegal Operation : This method can only be called by a subclass of Class::Cloneable";        
     my ($to_clone, $cache) = @_;
-    (defined($to_clone)) || die "Insufficient Arguments : Must specify the object to clone";    
-
+    (defined($to_clone)) 
+        || confess "Insufficient Arguments : Must specify the object to clone";    
     # To start with, non-reference values are
     # not copied, just returned, cache or not
     return $to_clone unless ref($to_clone);
-    
     # now check for an active cache
     unless(defined $cache) {
-        # if we dont have a cache, 
-        # then initialize it
-        $cache = {};    
         # now we check to see what we have,
         # and deconstruct and deep copy the 
-        # Class::Cloneable objects
+        # top-level Class::Cloneable objects
         if (blessed($to_clone) && $to_clone->isa('Class::Cloneable')) {
-            # now deconstruct the object,
-            my ($class, $ref_type) = deconstructObject($to_clone);
-            # and copy the object's internals and
+            # now copy the object's internals and
             # bless the new clone into the right class
-            my $clone = bless(cloneRef($to_clone, $cache, $ref_type), $class);
-            # now store it in case we run into a circular ref
-            $cache->{$to_clone} = $clone;    
-            # and return the clone
-            return $clone;            
+            # storing it in the cache case we run 
+            # into a circular ref
+            return $cache->{$to_clone} = bless(
+                cloneRef($to_clone, ($cache = {}), reftype($to_clone)), 
+                blessed($to_clone)
+            );    
         }
         # if it is not a Class::Cloneable, then 
         # we just proceed as normal
     }
-    
     # if we have it in the cache them return the cached clone
-    return $cache->{$to_clone} if exists ${$cache}{$to_clone};
-    
+    return $cache->{$to_clone} if exists $cache->{$to_clone};
     # now try it as an object, which will in
     # turn try it as ref if its not an object
-    my $clone = cloneObject($to_clone, $cache);
-
     # now store it in case we run into a circular ref
-    $cache->{$to_clone} = $clone;    
-    # and return the clone
-    return $clone;
-}
-
-sub deconstructObject {
-    (UNIVERSAL::isa((caller)[0], 'Class::Cloneable') || 
-     UNIVERSAL::isa((caller)[0], 'Class::Cloneable::Util')) 
-        || die "Illegal Operation : This method can only be called by a subclass of Class::Cloneable"; 
-    my ($obj_to_deconstruct) = @_;
-    (blessed($obj_to_deconstruct)) 
-        || die "Insufficient Arguments : Must specify a valid object to deconstruct";
-    # get the properly stringified object
-    # with respect for overload  
-    my $stringified_object;
-    if (overload::Method($obj_to_deconstruct, '""')) {
-        $stringified_object = overload::StrVal($obj_to_deconstruct);
-    }
-    else {
-        $stringified_object = "$obj_to_deconstruct";
-    }
-    
-    my $class = ref($obj_to_deconstruct);    
-    my ($ref_type) = ($stringified_object =~ /^\Q$class\E\=([A-Z]+)\(0x[0-9a-f]+\)$/);
-    return ($class, $ref_type);
+    return $cache->{$to_clone} = cloneObject($to_clone, $cache);    
 }
 
 sub cloneObject {
     (UNIVERSAL::isa((caller)[0], 'Class::Cloneable') || 
      UNIVERSAL::isa((caller)[0], 'Class::Cloneable::Util')) 
-        || die "Illegal Operation : This method can only be called by a subclass of Class::Cloneable"; 
+        || confess "Illegal Operation : This method can only be called by a subclass of Class::Cloneable"; 
     my ($to_clone, $cache) = @_;
-    ((defined($to_clone) && ref($to_clone)) && (defined($cache) && ref($cache) eq 'HASH')) 
-        || die "Insufficient Arguments : Must specify the object to clone and a valid cache";    
-    my $clone;
+    (ref($to_clone) && (ref($cache) && ref($cache) eq 'HASH')) 
+        || confess "Insufficient Arguments : Must specify the object to clone and a valid cache";    
     # check to see if we have an Class::Cloneable object,
     # or check to see if its an object, with a clone method    
-    if (blessed($to_clone) && ($to_clone->isa('Class::Cloneable') || $to_clone->can('clone'))) {
+    if (blessed($to_clone)) {
         # note, we want to be sure to respect any overriding of
         # the clone method with Class::Cloneable objects here
         # otherwise it would be faster to just send it directly
         # to the Class::Cloneable::Util::clone function above
-        $clone = $to_clone->clone();
-    }
-    # or if we have an object, with no clone method, then
-    # we will respect its encapsulation, and not muck with 
-    # its internals. Basically, we assume it does not want
-    # to be cloned
-    elsif (blessed($to_clone)) {
-        $clone = $to_clone;
+        return $cache->{$to_clone} = ($to_clone->can('clone') ? 
+                    $to_clone->clone()
+                    : 
+                    # or if we have an object, with no clone method, then
+                    # we will respect its encapsulation, and not muck with 
+                    # its internals. Basically, we assume it does not want
+                    # to be cloned                    
+                    $to_clone);
     }
     # if all else fails, it is likely a basic ref
-    else {
-        $clone = cloneRef($to_clone, $cache);     
-    }
-    # store it in our cache
-    $cache->{$to_clone} = $clone;
-    # and return the clone
-    return $clone;
+    return $cache->{$to_clone} = cloneRef($to_clone, $cache);     
 }
 
 sub cloneRef {
     (UNIVERSAL::isa((caller)[0], 'Class::Cloneable') || 
      UNIVERSAL::isa((caller)[0], 'Class::Cloneable::Util')) 
-        || die "Illegal Operation : This method can only be called by a subclass of Class::Cloneable"; 
+        || confess "Illegal Operation : This method can only be called by a subclass of Class::Cloneable"; 
     my ($to_clone, $cache, $ref_type) = @_;
-    ((defined($to_clone) && ref($to_clone)) && (defined($cache) && ref($cache) eq 'HASH')) 
-        || die "Insufficient Arguments : Must specify the object to clone and a valid cache";        
+    (ref($to_clone) && (ref($cache) && ref($cache) eq 'HASH')) 
+        || confess "Insufficient Arguments : Must specify the object to clone and a valid cache";        
     $ref_type = ref($to_clone) unless defined $ref_type;
-    
+    # check if it is weakened
+    my $is_weak;
+    $is_weak = 1 if isweak($to_clone);    
     my ($clone, $tied);
     if ($ref_type eq 'HASH') {
         $clone = {};
-        tie %{$clone}, ref $tied if $tied = tied(%{$to_clone});    
+        tie %{$clone}, ref $tied if $tied = tied(%{$to_clone});
         %{$clone} = map { ref($_) ? clone($_, $cache) : $_ } %{$to_clone};
     } 
     elsif ($ref_type eq 'ARRAY') {
@@ -156,6 +119,8 @@ sub cloneRef {
     }
     # store it in our cache
     $cache->{$to_clone} = $clone;
+    # and weaken it if appropriate
+    weaken($clone) if $is_weak;
     # and return the clone
     return $clone;    
 }
@@ -253,12 +218,6 @@ We will simply return a copy of the value in C<$to_clone>.
 
 As I said, this function (C<clone>) is the central function in this inner package. All other functions are called by this function, and unless you have really specific needs will likely never been used by others.
 
-=item B<deconstructObject ($obj_to_deconstruct)>
-
-Given an C<$obj_to_deconstruct>, this will attempt to determine and return the class name and underlying reference type of C<$obj_to_deconstruct>. Note, that it returns these two values in list context. If C<$obj_to_deconstruct> is not found to be an object (subclass of UNIVERSAL) then an exception will be thrown.
-
-B<NOTE:> This function will properly handle objects which overload the C<""> or stringification operator.
-
 =item B<cloneObject ($to_clone, $cache)>
 
 This function will assume that C<$to_clone> is an object, and try to follow the guidelines above where they pertain to objects. However, if C<$to_clone> is not an object, and instead an unblessed reference, this function will pass C<$to_clone> to C<cloneRef> for cloning. 
@@ -284,6 +243,10 @@ It is also doubtful that this will work with things like the "Inside-Out" object
 =head1 BUGS
 
 None that I am aware of. Of course, if you find a bug, let me know, and I will be sure to fix it. 
+
+=head1 CAVEATS
+
+This module makes an attempt to handle C<tied> references, however, the way it approaches them is not ideal and potentially wrong in some cases. So use this with care in such situations.
 
 =head1 CODE COVERAGE
 
@@ -325,7 +288,7 @@ stevan little, E<lt>stevan@iinteractive.comE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2004 by Infinity Interactive, Inc.
+Copyright 2004-2006 by Infinity Interactive, Inc.
 
 L<http://www.iinteractive.com>
 

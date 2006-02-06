@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 94;
+use Test::More tests => 95;
 
 BEGIN { 
     use_ok('Class::Cloneable');
@@ -85,6 +85,7 @@ BEGIN {
             hash             => { one => 1 },
             array            => [ 1, 2, 3 ],
             scalar_ref       => \$scalar,
+            weak_scalar_ref  => \$scalar,            
             scalar           => "Test",
             nested_hash      => { level_one => { level_two => { level_three => { level_four => undef }}}},
             nested_array     => [ 1, [ 2, [ 3, [ 4 ]]]],
@@ -98,6 +99,7 @@ BEGIN {
             object_w_clone   => ObjectWithClone->new(),
             cloneable_object => CloneableObject->new()
             }, $class;
+        Scalar::Util::weaken($cloneable->{weak_scalar_ref});
         $cloneable->{ref_to_ref} = \$cloneable->{scalar_ref};    
         return $cloneable;
     }
@@ -121,6 +123,11 @@ sub test_clone {
     
     isnt($test->{scalar_ref},   $clone->{scalar_ref}, '... scalar ref clone was successful');
     is(${$test->{scalar_ref}},  ${$clone->{scalar_ref}}, '... scalar ref clone was successful');
+    
+    isnt($test->{weak_scalar_ref},   $clone->{weak_scalar_ref}, '... scalar ref clone was successful');
+    is(${$test->{weak_scalar_ref}},  ${$clone->{weak_scalar_ref}}, '... scalar ref clone was successful'); 
+    
+    ok(Scalar::Util::isweak($test->{weak_scalar_ref}), '... properly cloned the weak ref-ness too');   
         
     isnt($test->{ref_to_ref},     $clone->{ref_to_ref}, '... ref of ref clone was successful');    
     is(${${$test->{ref_to_ref}}}, ${${$clone->{ref_to_ref}}}, '... ref of ref clone matches original');    
@@ -191,13 +198,7 @@ sub test_clone {
         Class::Cloneable::Util::clone();
     };
     like($@, qr/Illegal Operation \: This method can only be called by a subclass of Class\:\:Cloneable/, 
-         '... got the error we expected');
-         
-    eval {
-        Class::Cloneable::Util::deconstructObject()
-    };
-    like($@, qr/Illegal Operation \: This method can only be called by a subclass of Class\:\:Cloneable/, 
-         '... got the error we expected');         
+         '... got the error we expected');      
          
     eval {
         Class::Cloneable::Util::cloneObject();
@@ -215,19 +216,12 @@ sub test_clone {
         package CloneableExceptionTest;
         
         sub clone { Class::Cloneable::Util::clone(@_) }
-        sub deconstructObject { Class::Cloneable::Util::deconstructObject(@_) }
         sub cloneObject { Class::Cloneable::Util::cloneObject(@_) }
         sub cloneRef { Class::Cloneable::Util::cloneRef(@_) }
     }
     
     eval {
         CloneableExceptionTest::clone();
-    };
-    like($@, qr/Illegal Operation \: This method can only be called by a subclass of Class\:\:Cloneable/, 
-         '... got the error we expected');
-         
-    eval {
-        CloneableExceptionTest::deconstructObject()
     };
     like($@, qr/Illegal Operation \: This method can only be called by a subclass of Class\:\:Cloneable/, 
          '... got the error we expected');
@@ -249,7 +243,6 @@ sub test_clone {
         our @ISA = ('Class::Cloneable');
         
         sub clone { Class::Cloneable::Util::clone(@_) }
-        sub deconstructObject { Class::Cloneable::Util::deconstructObject(@_) }
         sub cloneObject { Class::Cloneable::Util::cloneObject(@_) }
         sub cloneRef { Class::Cloneable::Util::cloneRef(@_) }
     }
@@ -258,25 +251,7 @@ sub test_clone {
         CloneableArgumentExceptionTest::clone(undef);
     };
     like($@, qr/Insufficient Arguments \: Must specify the object to clone/, 
-         '... got the error we expected');
-         
-    eval {
-        CloneableArgumentExceptionTest::deconstructObject(undef)
-    };
-    like($@, qr/Insufficient Arguments \: Must specify a valid object to deconstruct/, 
-         '... got the error we expected');
-         
-    eval {
-        CloneableArgumentExceptionTest::deconstructObject("Fail")
-    };
-    like($@, qr/Insufficient Arguments \: Must specify a valid object to deconstruct/, 
-         '... got the error we expected');    
-         
-    eval {
-        CloneableArgumentExceptionTest::deconstructObject([])
-    };
-    like($@, qr/Insufficient Arguments \: Must specify a valid object to deconstruct/, 
-         '... got the error we expected');                   
+         '... got the error we expected');               
          
     eval {
         CloneableArgumentExceptionTest::cloneObject(undef, undef);
